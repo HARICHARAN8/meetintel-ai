@@ -120,9 +120,16 @@ def render_dashboard():
                             st.markdown(f"<span style='color: var(--mt-text-secondary); font-size: 0.78rem;'>Assignee: {safe_escape(item.assigned_to, default='Unassigned')} &nbsp;•&nbsp; {safe_escape(item.status)}</span>", unsafe_allow_html=True)
                         with col_u2:
                             st.markdown(f"<div style='text-align: right; color: var(--mt-primary); font-weight: 650; font-size: 0.84rem;'>📅 {safe_escape(item.deadline)}</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+                    if st.button("View Calendar Schedule →", key="dash_btn_open_cal", use_container_width=True):
+                        st.session_state['current_page'] = "Calendar"
+                        st.rerun()
             else:
                 with st.container(border=True):
                     empty_state("calendar-clock", "No Upcoming Deadlines", "No active tasks have explicit due dates registered.")
+                    if st.button("Open Calendar Schedule →", key="dash_btn_open_cal_empty", use_container_width=True):
+                        st.session_state['current_page'] = "Calendar"
+                        st.rerun()
 
         st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 

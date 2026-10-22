@@ -16,8 +16,11 @@ import {
   ShieldCheck,
   Check,
   ExternalLink,
+  Layers,
+  CalendarDays,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { DeadlineBadge } from "@/components/DeadlineBadge";
 
 export default function DashboardPage() {
   const [meetings] = useState(api.getMeetings());
@@ -227,12 +230,23 @@ export default function DashboardPage() {
               <AlertTriangle className="w-4 h-4 text-amber-500" />
               <span>Priority Commitments</span>
             </h2>
-            <Link
-              href="/tasks"
-              className="text-xs font-semibold text-brand-500 hover:underline flex items-center gap-1"
-            >
-              All tasks <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/matrix"
+                className="text-[0.72rem] font-semibold text-brand-500 hover:underline flex items-center gap-1"
+                title="View in 2x2 Matrix"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Matrix</span>
+              </Link>
+              <span className="text-[var(--mt-border)]">|</span>
+              <Link
+                href="/tasks"
+                className="text-xs font-semibold text-brand-500 hover:underline flex items-center gap-1"
+              >
+                <span>All tasks</span> <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -242,7 +256,7 @@ export default function DashboardPage() {
                 className="p-4 rounded-xl bg-[var(--mt-surface)] border border-[var(--mt-border)] shadow-card flex flex-col justify-between gap-3 text-xs"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                     <span
                       className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full ${
                         item.priority === "Urgent"
@@ -252,9 +266,7 @@ export default function DashboardPage() {
                     >
                       {item.priority}
                     </span>
-                    <span className="text-[0.68rem] font-medium text-[var(--mt-text-muted)]">
-                      {item.deadline}
-                    </span>
+                    <DeadlineBadge deadline={item.deadline} isCompleted={item.status === "Completed"} />
                   </div>
 
                   <div className="font-bold text-[var(--mt-text)] mb-1">
@@ -292,6 +304,52 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Executive Calendar & Schedule Preview Widget */}
+          <div className="p-4 rounded-xl bg-[var(--mt-surface)] border border-[var(--mt-border)] shadow-card space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold text-[var(--mt-text)] flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-brand-500" />
+                <span>Executive Calendar Preview</span>
+              </h2>
+              <Link
+                href="/calendar"
+                className="text-[0.7rem] font-semibold text-brand-500 hover:underline flex items-center gap-1"
+              >
+                <span>Full Schedule</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="space-y-2">
+              {api.getCalendarEvents().slice(0, 3).map((evt) => (
+                <div
+                  key={evt.id}
+                  className="p-2.5 rounded-lg bg-[var(--mt-surface-soft)] border border-[var(--mt-border)] flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-[var(--mt-text)] truncate text-[0.72rem]">
+                      {evt.summary}
+                    </div>
+                    <div className="text-[0.65rem] text-[var(--mt-text-secondary)] mt-0.5">
+                      {evt.start ? new Date(evt.start).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "Scheduled"}
+                    </div>
+                  </div>
+                  <span className="text-[0.62rem] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex-shrink-0">
+                    {evt.sync_status || "Synced"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <Link
+              href="/calendar"
+              className="w-full py-1.5 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 font-semibold text-[0.72rem] transition-colors flex items-center justify-center gap-1 block text-center"
+            >
+              <span>Open Two-Way Calendar</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
           </div>
 
           {/* Governance Audit Snippet */}

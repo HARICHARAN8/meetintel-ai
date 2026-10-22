@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   CheckSquare,
+  Layers,
   Mic,
   UploadCloud,
   FolderKanban,
@@ -42,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { name: "Overview", href: "/", icon: LayoutDashboard },
         { name: "My Commitments", href: "/tasks", icon: CheckSquare },
+        { name: "Priority Matrix", href: "/matrix", icon: Layers },
         { name: "Meeting Library", href: "/meetings", icon: Mic },
         { name: "Process Meeting", href: "/upload", icon: UploadCloud },
       ],
@@ -58,7 +60,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       header: "Automation & Ecosystem",
       items: [
-        { name: "Calendar & Follow-ups", href: "/followups", icon: MailCheck },
+        { name: "Calendar Schedule", href: "/calendar", icon: CalendarDays },
+        { name: "Absentee Follow-ups", href: "/followups", icon: MailCheck },
         { name: "Workflow Automations", href: "/automations", icon: Zap },
         { name: "Integrations Center", href: "/integrations", icon: Cable },
       ],

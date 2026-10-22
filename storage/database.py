@@ -73,6 +73,8 @@ def init_db(target_engine=None, target_session=None):
                 ensure_column("action_items", "dependencies", "VARCHAR DEFAULT '[]'")
                 ensure_column("action_items", "completion_notes", "TEXT")
                 ensure_column("action_items", "project_id", "VARCHAR")
+                ensure_column("action_items", "urgency", "VARCHAR")
+                ensure_column("action_items", "importance", "VARCHAR")
                 ensure_column("action_items", "created_at", "DATETIME")
                 ensure_column("action_items", "updated_at", "DATETIME")
 

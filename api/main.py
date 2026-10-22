@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import datetime
 import logging
 from dotenv import load_dotenv
 
@@ -15,11 +16,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from storage.database import get_db, init_db
 from storage.models import Meeting, ActionItem, Decision, User, AuditEvent
-from storage import repository
+from storage import repository, models
 from ai.meeting_analyzer import MeetingAnalyzer
 from storage.knowledge import get_knowledge_repository
 from api.integrations import router as integrations_router
 from integrations.google_workspace import GoogleWorkspaceIntegration
+from utils.date_parser import parse_natural_deadline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -99,6 +101,21 @@ class TaskRejectRequest(BaseModel):
 class TaskReassignRequest(BaseModel):
     new_assigned_user_id: str
 
+class TaskMatrixClassification(BaseModel):
+    urgency: Optional[str] = None # "Urgent", "Not Urgent", or None
+    importance: Optional[str] = None # "Important", "Not Important", or None
+
+class TaskDeadlineUpdateRequest(BaseModel):
+    deadline: str
+    reference_datetime: Optional[str] = None
+    timezone: Optional[str] = "UTC"
+
+class DeadlineParseRequest(BaseModel):
+    text: str
+    reference_datetime: Optional[str] = None
+    timezone: Optional[str] = "UTC"
+    is_completed: bool = False
+
 def get_current_user_id(x_user_id: str = Header("admin", description="Authenticated user ID for tenant isolation")):
     return x_user_id
 
@@ -171,6 +188,9 @@ def get_meeting_detail(
                 "assignment_status": a.assignment_status,
                 "deadline": a.deadline,
                 "priority": a.priority,
+                "urgency": a.urgency,
+                "importance": a.importance,
+                "quadrant": a.quadrant,
                 "status": a.status,
                 "approval_status": a.approval_status,
                 "confidence": a.confidence,
@@ -187,6 +207,8 @@ def get_meeting_detail(
 def list_tasks(
     status: Optional[str] = None,
     approval_status: Optional[str] = None,
+    urgency: Optional[str] = None,
+    importance: Optional[str] = None,
     db = Depends(get_db),
     user_id: str = Depends(get_current_user_id)
 ):
@@ -200,7 +222,9 @@ def list_tasks(
         user_id=assigned_user,
         org_id=org_id,
         status=status,
-        approval_status=approval_status
+        approval_status=approval_status,
+        urgency=urgency,
+        importance=importance
     )
     return [
         {
@@ -211,6 +235,9 @@ def list_tasks(
             "assigned_to": t.assigned_to,
             "deadline": t.deadline,
             "priority": t.priority,
+            "urgency": t.urgency,
+            "importance": t.importance,
+            "quadrant": t.quadrant,
             "status": t.status,
             "approval_status": t.approval_status,
             "confidence": t.confidence,
@@ -291,6 +318,101 @@ def reassign_task_endpoint(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"status": "reassigned", "task_id": task.id, "assigned_to": task.assigned_to}
+
+@app.post("/tasks/{task_id}/matrix")
+@app.patch("/tasks/{task_id}/matrix")
+def update_task_matrix_endpoint(
+    task_id: int,
+    req: TaskMatrixClassification,
+    db = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
+    user = repository.get_user_by_id(db, user_id)
+    existing_task = db.query(ActionItem).filter(ActionItem.id == task_id).first()
+    if not existing_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    # Tenant isolation & authorization: Employee can only classify their own tasks
+    if user and user.role == "Employee":
+        if existing_task.assigned_user_id != user.id:
+            raise HTTPException(status_code=403, detail="Employees can only modify their own assigned tasks.")
+
+    task = repository.update_action_item_matrix(
+        db,
+        item_id=task_id,
+        urgency=req.urgency,
+        importance=req.importance,
+        actor_user_id=user_id
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "status": "classified",
+        "task_id": task.id,
+        "urgency": task.urgency,
+        "importance": task.importance,
+        "quadrant": task.quadrant
+    }
+
+@app.post("/tasks/{task_id}/deadline")
+def update_task_deadline_endpoint(
+    task_id: int,
+    req: TaskDeadlineUpdateRequest,
+    db = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
+    user = repository.get_user_by_id(db, user_id)
+    task = db.query(ActionItem).filter(ActionItem.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    if user and user.role == "Employee" and task.assigned_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Employees can only edit deadlines for their own tasks.")
+
+    tz_str = req.timezone or (user.timezone if user and user.timezone else "UTC")
+    parse_res = parse_natural_deadline(req.deadline, timezone_str=tz_str, is_completed=(task.status == "Completed"))
+    if parse_res["status"] == "invalid":
+        raise HTTPException(status_code=400, detail=parse_res.get("error_message", "Invalid deadline specification"))
+    if parse_res["status"] == "needs_clarification":
+        raise HTTPException(status_code=400, detail=parse_res.get("clarification_question", "Deadline is ambiguous"))
+        
+    task.deadline = parse_res["parsed_iso"] or req.deadline
+    task.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    db.commit()
+    db.refresh(task)
+
+    # Sync calendar update if event already exists
+    cal_event = db.query(models.CalendarEvent).filter(models.CalendarEvent.task_id == task.id).first()
+    cal_sync_status = "none"
+    if cal_event:
+        gcal = GoogleWorkspaceIntegration(org_id=task.org_id)
+        u = repository.get_user_by_id(db, task.assigned_user_id) or user
+        sync_res = gcal.sync_task_to_calendar(db, task=task, user=u)
+        cal_sync_status = sync_res.get("status", "synced")
+
+    return {
+        "status": "updated",
+        "task_id": task.id,
+        "deadline": task.deadline,
+        "formatted_local": parse_res["formatted_local"],
+        "countdown_text": parse_res["countdown_text"],
+        "badge_status": parse_res["badge_status"],
+        "calendar_sync": cal_sync_status
+    }
+
+@app.post("/deadlines/parse")
+def parse_deadline_endpoint(
+    req: DeadlineParseRequest,
+    user_id: str = Depends(get_current_user_id),
+    db = Depends(get_db)
+):
+    user = repository.get_user_by_id(db, user_id)
+    tz = req.timezone or (user.timezone if user and user.timezone else "UTC")
+    return parse_natural_deadline(
+        text=req.text,
+        timezone_str=tz,
+        is_completed=req.is_completed
+    )
 
 # ---------------------------------------------------------
 # Decision Register API

@@ -55,7 +55,8 @@ def render_sidebar_navigation():
             {
                 "header": "Automation & Ecosystem",
                 "items": [
-                    {"name": "Calendar & Follow-ups", "route": "Follow-ups", "icon": "✉"},
+                    {"name": "Calendar Schedule", "route": "Calendar", "icon": "📅"},
+                    {"name": "Absentee Follow-ups", "route": "Follow-ups", "icon": "✉"},
                     {"name": "Workflow Automations", "route": "Automations", "icon": "⚡"},
                     {"name": "Integrations Center", "route": "Integrations", "icon": "🔌"},
                 ]

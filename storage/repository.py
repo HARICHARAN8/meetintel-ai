@@ -164,7 +164,7 @@ def get_all_meetings(db: Session, user_id: str = None, org_id: str = None):
 # Action Items & Task Execution Repositories
 # -------------------------------------------------------------
 
-def get_action_items(db: Session, meeting_id: Optional[str] = None, user_id: Optional[str] = None, org_id: Optional[str] = None, status: Optional[str] = None, approval_status: Optional[str] = None):
+def get_action_items(db: Session, meeting_id: Optional[str] = None, user_id: Optional[str] = None, org_id: Optional[str] = None, status: Optional[str] = None, approval_status: Optional[str] = None, urgency: Optional[str] = None, importance: Optional[str] = None):
     query = db.query(models.ActionItem)
     if meeting_id:
         query = query.filter(models.ActionItem.meeting_id == meeting_id)
@@ -176,6 +176,10 @@ def get_action_items(db: Session, meeting_id: Optional[str] = None, user_id: Opt
         query = query.filter(models.ActionItem.status == status)
     if approval_status:
         query = query.filter(models.ActionItem.approval_status == approval_status)
+    if urgency:
+        query = query.filter(models.ActionItem.urgency == urgency)
+    if importance:
+        query = query.filter(models.ActionItem.importance == importance)
     return query.order_by(models.ActionItem.id.desc()).all()
 
 def update_action_item_status(db: Session, item_id: int, new_status: str, actor_user_id: Optional[str] = None, completion_notes: Optional[str] = None) -> Optional[models.ActionItem]:
@@ -287,6 +291,67 @@ def reassign_action_item(db: Session, item_id: int, new_assigned_user_id: str, a
         new_state=f"assigned_to: {item.assigned_to}",
         transcript_excerpt=item.evidence_excerpt,
         details=f"Action item reassigned from '{prev_assignee}' to '{item.assigned_to}'"
+    )
+    return item
+
+def update_action_item_matrix(
+    db: Session,
+    item_id: int,
+    urgency: Optional[str] = None,
+    importance: Optional[str] = None,
+    actor_user_id: Optional[str] = None
+) -> Optional[models.ActionItem]:
+    item = db.query(models.ActionItem).filter(models.ActionItem.id == item_id).first()
+    if not item:
+        return None
+    prev_urgency = item.urgency
+    prev_importance = item.importance
+    prev_quadrant = item.quadrant
+    
+    # Normalize valid values
+    norm_u = None
+    if urgency is not None:
+        u_str = str(urgency).strip().lower()
+        if u_str in ["urgent"]:
+            norm_u = "Urgent"
+        elif u_str in ["not urgent", "not_urgent", "non-urgent", "noturgent"]:
+            norm_u = "Not Urgent"
+        elif u_str in ["none", "null", "unclassified", ""]:
+            norm_u = None
+        else:
+            norm_u = None
+
+    norm_i = None
+    if importance is not None:
+        i_str = str(importance).strip().lower()
+        if i_str in ["important"]:
+            norm_i = "Important"
+        elif i_str in ["not important", "not_important", "non-important", "notimportant"]:
+            norm_i = "Not Important"
+        elif i_str in ["none", "null", "unclassified", ""]:
+            norm_i = None
+        else:
+            norm_i = None
+
+    item.urgency = norm_u
+    item.importance = norm_i
+    item.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    db.commit()
+    db.refresh(item)
+    
+    actor = get_user_by_id(db, actor_user_id) if actor_user_id else None
+    log_audit_event(
+        db,
+        org_id=item.org_id,
+        user_id=actor_user_id,
+        actor_username=actor.username if actor else "System",
+        entity_type="task",
+        entity_id=str(item.id),
+        action="UPDATE",
+        previous_state=f"quadrant: {prev_quadrant} (urgency: {prev_urgency}, importance: {prev_importance})",
+        new_state=f"quadrant: {item.quadrant} (urgency: {item.urgency}, importance: {item.importance})",
+        transcript_excerpt=item.evidence_excerpt,
+        details=f"Task '{item.task}' Eisenhower classification updated to {item.quadrant}."
     )
     return item
 

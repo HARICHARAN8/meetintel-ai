@@ -144,3 +144,78 @@ def acknowledge_followup(notification_id: str, x_user_id: str = Header("admin"),
     if not success:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"status": "acknowledged", "notification_id": notification_id}
+
+# ---------------------------------------------------------
+# Real Google Calendar API Endpoints
+# ---------------------------------------------------------
+
+@router.get("/google/auth-url")
+def get_google_auth_url(state: str = "meetintel_google_state"):
+    """Generates the official Google OAuth 2.0 authorization URL."""
+    google = GoogleWorkspaceIntegration()
+    return {"auth_url": google.get_auth_url(state=state), "is_configured": google.is_configured(), "demo_mode": google.demo_mode}
+
+@router.post("/google/disconnect")
+def disconnect_google(provider: str = "google_calendar", db: Session = Depends(get_db)):
+    """Revokes OAuth tokens and safely disconnects Google account."""
+    google = GoogleWorkspaceIntegration()
+    return google.disconnect(db, provider=provider)
+
+@router.get("/calendar/events")
+def list_calendar_events(
+    max_results: int = 30,
+    x_user_id: str = Header("admin"),
+    db: Session = Depends(get_db)
+):
+    """Fetches upcoming events from Google Calendar and locally scheduled tasks."""
+    user = repository.get_user_by_id(db, x_user_id)
+    google = GoogleWorkspaceIntegration(org_id=user.org_id if user else "org-default-001")
+    events = google.list_calendar_events(db, user=user, max_results=max_results)
+    conn = repository.get_integration_connection(db, provider="google_calendar", org_id=google.org_id)
+    return {
+        "events": events,
+        "connection_status": conn.connection_status if conn else "Not connected",
+        "account_email": conn.account_email if conn else None,
+        "last_sync_at": conn.last_sync_at.isoformat() if conn and conn.last_sync_at else None,
+        "is_live": bool(conn and "Connected" in conn.connection_status and not conn.connection_status.endswith("(Demo)"))
+    }
+
+@router.post("/calendar/sync")
+def trigger_calendar_sync(
+    x_user_id: str = Header("admin"),
+    db: Session = Depends(get_db)
+):
+    """Scans and synchronizes all approved action items to Google Calendar."""
+    user = repository.get_user_by_id(db, x_user_id)
+    google = GoogleWorkspaceIntegration(org_id=user.org_id if user else "org-default-001")
+    count = google.sync_all_approved_tasks(db)
+    return {"status": "success", "synced_count": count}
+
+@router.post("/calendar/tasks/{task_id}/sync")
+def sync_task_to_calendar_endpoint(
+    task_id: int,
+    x_user_id: str = Header("admin"),
+    db: Session = Depends(get_db)
+):
+    """Synchronizes a specific approved task to Google Calendar."""
+    user = repository.get_user_by_id(db, x_user_id)
+    task = db.query(repository.models.ActionItem).filter(repository.models.ActionItem.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.approval_status != "Approved":
+        raise HTTPException(status_code=400, detail="Only approved tasks can be synchronized to Google Calendar.")
+        
+    google = GoogleWorkspaceIntegration(org_id=task.org_id or (user.org_id if user else "org-default-001"))
+    u = repository.get_user_by_id(db, task.assigned_user_id) or user
+    res = google.sync_task_to_calendar(db, task=task, user=u)
+    return res
+
+@router.delete("/calendar/tasks/{task_id}")
+def cancel_task_calendar_endpoint(
+    task_id: int,
+    db: Session = Depends(get_db)
+):
+    """Cancels or removes a task's calendar event."""
+    google = GoogleWorkspaceIntegration()
+    res = google.cancel_task_calendar_event(db, task_id=task_id)
+    return res

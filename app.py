@@ -91,7 +91,10 @@ def main():
     elif page in ["Knowledge Search", "Organizational Knowledge"]:
         from ui.knowledge_search import render_knowledge_search_page
         render_knowledge_search_page()
-    elif page in ["Follow-ups", "Calendar & Follow-ups"]:
+    elif page in ["Calendar", "Calendar Schedule"]:
+        from ui.calendar_view import render_calendar_page
+        render_calendar_page()
+    elif page in ["Follow-ups", "Absentee Follow-ups", "Calendar & Follow-ups"]:
         from ui.followups_view import render_followups_page
         render_followups_page()
     elif page in ["Automations"]:

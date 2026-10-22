@@ -111,6 +111,8 @@ class ActionItem(Base):
     assignment_status = Column(String, default="Assigned") # Assigned, Needs assignment, Suggested
     deadline = Column(String, nullable=True)
     priority = Column(String, default="Medium") # Low, Medium, High, Urgent
+    urgency = Column(String, nullable=True) # Urgent, Not Urgent, or None
+    importance = Column(String, nullable=True) # Important, Not Important, or None
     status = Column(String, default="Pending") # Draft, Pending Approval, Approved, Scheduled, In Progress, Completed, Blocked, Rejected, Cancelled, Overdue
     approval_status = Column(String, default="Draft") # Draft, Pending Approval, Approved, Rejected
     approved_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
@@ -127,6 +129,20 @@ class ActionItem(Base):
     assigned_user = relationship("User", foreign_keys=[assigned_user_id], back_populates="assigned_tasks")
     approved_by = relationship("User", foreign_keys=[approved_by_user_id])
     calendar_event = relationship("CalendarEvent", back_populates="task", uselist=False, cascade="all, delete-orphan")
+
+    @property
+    def quadrant(self) -> str:
+        u = (self.urgency or "").strip().lower()
+        i = (self.importance or "").strip().lower()
+        if u == "urgent" and i == "important":
+            return "Do First"
+        elif u in ["not urgent", "not_urgent"] and i == "important":
+            return "Schedule"
+        elif u == "urgent" and i in ["not important", "not_important"]:
+            return "Delegate"
+        elif u in ["not urgent", "not_urgent"] and i in ["not important", "not_important"]:
+            return "Defer"
+        return "Unclassified"
 
 class Decision(Base):
     __tablename__ = "decisions"

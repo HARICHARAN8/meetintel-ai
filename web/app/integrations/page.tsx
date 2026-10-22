@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   Cable,
   CheckCircle2,
@@ -10,6 +11,7 @@ import {
   Video,
   Calendar,
   Mail,
+  CalendarDays,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { IntegrationStatus } from "@/lib/types";
@@ -121,23 +123,35 @@ export default function IntegrationsPage() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[var(--mt-border)] flex items-center justify-between text-xs">
+            <div className="pt-3 border-t border-[var(--mt-border)] flex items-center justify-between text-xs flex-wrap gap-2">
               <span className="text-[0.7rem] text-[var(--mt-text-muted)]">
                 Last Ping: {item.last_sync ? new Date(item.last_sync).toLocaleTimeString() : "Ready"}
               </span>
 
-              <button
-                onClick={() => handleTest(item.provider)}
-                disabled={testingProvider === item.provider}
-                className="px-3.5 py-1.5 rounded-lg bg-[var(--mt-surface-soft)] hover:bg-brand-500 hover:text-white border border-[var(--mt-border)] text-xs font-semibold text-[var(--mt-text)] transition-all flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${
-                    testingProvider === item.provider ? "animate-spin text-brand-500" : ""
-                  }`}
-                />
-                <span>{testingProvider === item.provider ? "Testing..." : "Test Connection"}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {item.provider === "google_calendar" && (
+                  <Link
+                    href="/calendar"
+                    className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-xs font-semibold hover:bg-blue-500/20 transition-all flex items-center gap-1"
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    <span>Open Calendar</span>
+                  </Link>
+                )}
+
+                <button
+                  onClick={() => handleTest(item.provider)}
+                  disabled={testingProvider === item.provider}
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--mt-surface-soft)] hover:bg-brand-500 hover:text-white border border-[var(--mt-border)] text-xs font-semibold text-[var(--mt-text)] transition-all flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${
+                      testingProvider === item.provider ? "animate-spin text-brand-500" : ""
+                    }`}
+                  />
+                  <span>{testingProvider === item.provider ? "Testing..." : "Test Connection"}</span>
+                </button>
+              </div>
             </div>
           </div>
         ))}

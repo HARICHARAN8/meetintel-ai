@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   CheckSquare,
   Clock,
@@ -13,21 +14,29 @@ import {
   Filter,
   UserPlus,
   Quote,
+  Layers,
+  Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { ActionItem, TaskStatus, ApprovalStatus } from "@/lib/types";
+import { ActionItem, TaskStatus, ApprovalStatus, EisenhowerQuadrant } from "@/lib/types";
+import { DeadlineBadge } from "@/components/DeadlineBadge";
+import { ConversationalDeadlineModal } from "@/components/ConversationalDeadlineModal";
+import { ParsedDeadlineResult } from "@/lib/dateParser";
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState(api.getActionItems());
-  const [users] = useState(api.getUsers());
+  const [tasks, setTasks] = useState(() => api.getActionItems());
+  const [users] = useState(() => api.getUsers());
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [approvalFilter, setApprovalFilter] = useState<string>("All");
+  const [quadrantFilter, setQuadrantFilter] = useState<string>("All");
   const [reassignModalTask, setReassignModalTask] = useState<ActionItem | null>(null);
   const [selectedUserForReassign, setSelectedUserForReassign] = useState<string>("");
+  const [deadlineModalTask, setDeadlineModalTask] = useState<ActionItem | null>(null);
 
   const filteredTasks = tasks.filter((t) => {
     if (statusFilter !== "All" && t.status !== statusFilter) return false;
     if (approvalFilter !== "All" && t.approval_status !== approvalFilter) return false;
+    if (quadrantFilter !== "All" && (t.quadrant || "Unclassified") !== quadrantFilter) return false;
     return true;
   });
 
@@ -45,6 +54,14 @@ export default function TasksPage() {
   const handleStatusChange = (taskId: number, newStatus: TaskStatus) => {
     api.updateActionItemStatus(taskId, newStatus);
     setTasks(api.getActionItems());
+  };
+
+  const handleDeadlineConfirmed = (parsed: ParsedDeadlineResult) => {
+    if (deadlineModalTask) {
+      api.updateActionItemDeadline(deadlineModalTask.id, parsed.parsedIso || parsed.rawInput);
+      setTasks(api.getActionItems());
+      setDeadlineModalTask(null);
+    }
   };
 
   const handleReassignSubmit = () => {
@@ -65,6 +82,9 @@ export default function TasksPage() {
             <span className="text-[0.68rem] font-bold uppercase tracking-wider text-brand-500 bg-brand-500/10 px-2.5 py-0.5 rounded-full border border-brand-500/20">
               Execution Engine
             </span>
+            <span className="text-[0.68rem] font-medium text-[var(--mt-text-secondary)]">
+              {filteredTasks.length} Commitments
+            </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--mt-text)]">
             My Commitments & Team Execution
@@ -72,6 +92,24 @@ export default function TasksPage() {
           <p className="text-xs text-[var(--mt-text-secondary)] mt-1">
             Track commitments extracted from meeting dialogue, review lead sign-offs, and synchronize to calendars.
           </p>
+        </div>
+
+        {/* View Switchers */}
+        <div className="flex items-center gap-2">
+          <Link
+            href="/matrix"
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-brand-500 text-white shadow-sm hover:bg-brand-600 transition-all flex items-center gap-1.5"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Eisenhower Matrix</span>
+          </Link>
+          <Link
+            href="/calendar"
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-[var(--mt-surface-soft)] text-[var(--mt-text)] border border-[var(--mt-border)] hover:bg-brand-500/10 hover:text-brand-600 transition-all flex items-center gap-1.5"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Calendar</span>
+          </Link>
         </div>
       </div>
 
@@ -98,9 +136,19 @@ export default function TasksPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[var(--mt-text-secondary)]">
-            Approval:
-          </span>
+          <select
+            value={quadrantFilter}
+            onChange={(e) => setQuadrantFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--mt-surface-soft)] border border-[var(--mt-border)] text-[var(--mt-text)] focus:outline-none focus:border-brand-500"
+          >
+            <option value="All">All Quadrants</option>
+            <option value="Do First">Q1: Do First</option>
+            <option value="Schedule">Q2: Schedule</option>
+            <option value="Delegate">Q3: Delegate</option>
+            <option value="Defer">Q4: Defer</option>
+            <option value="Unclassified">Unclassified</option>
+          </select>
+
           <select
             value={approvalFilter}
             onChange={(e) => setApprovalFilter(e.target.value)}
@@ -131,7 +179,7 @@ export default function TasksPage() {
               <div className="space-y-2.5">
                 {/* Header Pills */}
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span
                       className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full ${
                         t.priority === "Urgent"
@@ -141,10 +189,25 @@ export default function TasksPage() {
                           : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
                       }`}
                     >
-                      {t.priority} Priority
+                      {t.priority}
+                    </span>
+                    <span
+                      className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full ${
+                        t.quadrant === "Do First"
+                          ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                          : t.quadrant === "Schedule"
+                          ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                          : t.quadrant === "Delegate"
+                          ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                          : t.quadrant === "Defer"
+                          ? "bg-slate-500/10 text-slate-600 border border-slate-500/20"
+                          : "bg-gray-500/10 text-gray-500 border border-gray-500/20"
+                      }`}
+                    >
+                      {t.quadrant || "Unclassified"}
                     </span>
                     <span className="text-[0.68rem] text-[var(--mt-text-muted)]">
-                      Task #{t.id}
+                      #{t.id}
                     </span>
                   </div>
 
@@ -180,20 +243,32 @@ export default function TasksPage() {
                 )}
 
                 {/* Assignee & Deadline meta */}
-                <div className="flex flex-wrap items-center gap-4 text-[0.72rem] text-[var(--mt-text-muted)] pt-1">
-                  <span className="flex items-center gap-1 text-[var(--mt-text)] font-semibold">
-                    <User className="w-3.5 h-3.5 text-brand-500" />
-                    {t.assigned_to}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />
-                    Due: {t.deadline}
-                  </span>
-                  {t.calendar_synced && (
-                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                      <Calendar className="w-3.5 h-3.5" /> Synced to GCal
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[0.72rem] text-[var(--mt-text-muted)] pt-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[var(--mt-text)] font-semibold">
+                      <User className="w-3.5 h-3.5 text-brand-500" />
+                      {t.assigned_to}
                     </span>
-                  )}
+                    {t.calendar_synced && (
+                      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                        <Calendar className="w-3.5 h-3.5" /> GCal Synced
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <DeadlineBadge
+                      deadline={t.deadline}
+                      isCompleted={t.status === "Completed"}
+                    />
+                    <button
+                      onClick={() => setDeadlineModalTask(t)}
+                      className="text-[0.65rem] font-semibold text-brand-600 hover:underline px-1.5 py-0.5 rounded hover:bg-brand-500/10 transition-colors"
+                      title="Edit deadline with natural-language parser"
+                    >
+                      Change
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -236,9 +311,9 @@ export default function TasksPage() {
                       </button>
                       <button
                         onClick={() => handleApprove(t.id)}
-                        className="px-3 py-1 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-semibold text-xs shadow-sm transition-colors flex items-center gap-1"
+                        className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-xs transition-colors flex items-center gap-1 shadow-sm"
                       >
-                        <Check className="w-3 h-3" /> Approve
+                        <Check className="w-3 h-3" /> Approve &amp; Sync
                       </button>
                     </>
                   )}
@@ -290,6 +365,17 @@ export default function TasksPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Conversational Deadline Modal */}
+      {deadlineModalTask && (
+        <ConversationalDeadlineModal
+          isOpen={true}
+          initialText={deadlineModalTask.deadline || "next Friday at 3 PM"}
+          taskTitle={deadlineModalTask.task}
+          onConfirm={handleDeadlineConfirmed}
+          onCancel={() => setDeadlineModalTask(null)}
+        />
       )}
     </div>
   );
